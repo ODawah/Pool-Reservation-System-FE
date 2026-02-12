@@ -64,8 +64,7 @@ const Index = () => {
 
     try {
       await createReceipt(receipt);
-      toast({ title: `Receipt created`, description: `Table ${table.label} — $${receipt.total_price.toFixed(2)}` });
-      // Reset table and refresh shop stock
+      toast({ title: `Receipt created`, description: `${table.label} — $${receipt.total_price.toFixed(2)}` });
       setTables(prev => prev.map(t => t.id === id ? { ...t, isActive: false, startTime: null, orders: [] } : t));
       fetchShop();
     } catch {
@@ -101,37 +100,49 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background p-4">
-      <h1 className="mb-4 text-2xl font-bold text-foreground">Pool Hall Manager</h1>
-      <Tabs defaultValue="tables">
-        <TabsList className="mb-4 flex-wrap">
-          <TabsTrigger value="tables">Tables</TabsTrigger>
-          <TabsTrigger value="employees">Employees</TabsTrigger>
-          <TabsTrigger value="attendance">Attendance</TabsTrigger>
-          <TabsTrigger value="revenue">Revenue</TabsTrigger>
-          <TabsTrigger value="expenses">Expenses</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="tables">
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {tables.map(t => (
-              <TableCard
-                key={t.id}
-                session={t}
-                shopItems={shopItems}
-                onStart={handleStart}
-                onStop={handleStop}
-                onAddItem={handleAddItem}
-                onRemoveItem={handleRemoveItem}
-              />
-            ))}
+    <div className="min-h-screen bg-background felt-texture">
+      {/* Header */}
+      <header className="border-b border-border/50 px-6 py-4">
+        <div className="flex items-center gap-3">
+          <span className="text-3xl">🎱</span>
+          <div>
+            <h1 className="text-2xl font-black tracking-tight text-foreground">The Lounge</h1>
+            <p className="text-xs text-muted-foreground tracking-widest uppercase">Pool Hall Manager</p>
           </div>
-        </TabsContent>
-        <TabsContent value="employees"><EmployeesTab /></TabsContent>
-        <TabsContent value="attendance"><AttendanceTab /></TabsContent>
-        <TabsContent value="revenue"><RevenueTab /></TabsContent>
-        <TabsContent value="expenses"><ExpensesTab /></TabsContent>
-      </Tabs>
+        </div>
+      </header>
+
+      <main className="p-6">
+        <Tabs defaultValue="tables">
+          <TabsList className="mb-6 bg-muted/50 border border-border/50">
+            <TabsTrigger value="tables" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">🎱 Tables</TabsTrigger>
+            <TabsTrigger value="employees" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">👥 Employees</TabsTrigger>
+            <TabsTrigger value="attendance" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">⏰ Attendance</TabsTrigger>
+            <TabsTrigger value="revenue" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">💰 Revenue</TabsTrigger>
+            <TabsTrigger value="expenses" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">📝 Expenses</TabsTrigger>
+          </TabsList>
+
+          <TabsContent value="tables">
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {tables.map(t => (
+                <TableCard
+                  key={t.id}
+                  session={t}
+                  shopItems={shopItems}
+                  onStart={handleStart}
+                  onStop={handleStop}
+                  onAddItem={handleAddItem}
+                  onRemoveItem={handleRemoveItem}
+                />
+              ))}
+            </div>
+          </TabsContent>
+          <TabsContent value="employees"><EmployeesTab /></TabsContent>
+          <TabsContent value="attendance"><AttendanceTab /></TabsContent>
+          <TabsContent value="revenue"><RevenueTab /></TabsContent>
+          <TabsContent value="expenses"><ExpensesTab /></TabsContent>
+        </Tabs>
+      </main>
     </div>
   );
 };
