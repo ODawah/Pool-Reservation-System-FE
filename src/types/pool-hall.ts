@@ -10,6 +10,12 @@ export interface OrderItem {
   quantity: number;
 }
 
+export interface TableInfo {
+  id: number;
+  name: string;
+  price: number;
+}
+
 export interface TableSession {
   id: number;
   label: string;
@@ -17,6 +23,7 @@ export interface TableSession {
   isActive: boolean;
   startTime: number | null;
   orders: OrderItem[];
+  pricePerMinute: number;
 }
 
 export interface Employee {
@@ -27,16 +34,16 @@ export interface Employee {
 }
 
 export interface AttendanceRecord {
-  employeeID: number;
+  id?: number;
+  employee_id: number;
   clock_in_time?: string;
   clock_out_time?: string;
-  today_cash?: number;
 }
 
 export interface RevenueRecord {
-  source: 'cash' | 'visa';
+  id?: number;
+  source: string;
   amount: number;
-  date: string;
 }
 
 export interface ExpenseRecord {
@@ -46,14 +53,14 @@ export interface ExpenseRecord {
 
 export interface ReceiptPayload {
   table_id: number;
-  items: {
-    table_time_minutes: number;
-    shop_items: Array<{
-      item_id: number;
-      name: string;
-      qty: number;
-      unit_price: number;
-    }>;
-  };
+  items: Record<string, number>;
   total_price: number;
+}
+
+export interface Receipt {
+  id: number;
+  table_id: number;
+  items: Record<string, number>;
+  total_price: number;
+  timestamp: string;
 }

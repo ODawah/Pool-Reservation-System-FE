@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { createExpense } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { Receipt } from 'lucide-react';
 
@@ -13,11 +12,7 @@ const ExpensesTab = () => {
 
   const handleCreate = async () => {
     if (!description || !amount) return;
-    try {
-      await createExpense({ description, amount: Number(amount) });
-      toast({ title: 'Expense recorded' });
-      setDescription(''); setAmount('');
-    } catch { toast({ title: 'Failed to record expense', variant: 'destructive' }); }
+    toast({ title: 'Expenses endpoint not available in API', variant: 'destructive' });
   };
 
   return (
