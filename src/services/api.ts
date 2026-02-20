@@ -1,6 +1,6 @@
 import type { Employee, RevenueRecord, ShopItem, ReceiptPayload, Receipt, TableInfo, AttendanceRecord } from '@/types/pool-hall';
 
-const BASE_URL = 'https://937e-102-41-84-41.ngrok-free.app';
+const BASE_URL = 'https://f206-102-41-84-41.ngrok-free.app';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
