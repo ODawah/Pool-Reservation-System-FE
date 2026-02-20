@@ -9,14 +9,13 @@ import { DollarSign } from 'lucide-react';
 
 const RevenueTab = () => {
   const { toast } = useToast();
-  const [source, setSource] = useState<'cash' | 'visa'>('cash');
+  const [source, setSource] = useState<string>('cash');
   const [amount, setAmount] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
 
   const handleCreate = async () => {
     if (!amount) return;
     try {
-      await createRevenue({ source, amount: Number(amount), date });
+      await createRevenue(source, Number(amount));
       toast({ title: 'Revenue recorded' });
       setAmount('');
     } catch { toast({ title: 'Failed to record revenue', variant: 'destructive' }); }
@@ -26,7 +25,7 @@ const RevenueTab = () => {
     <Card className="max-w-md">
       <CardHeader><CardTitle className="flex items-center gap-2"><DollarSign className="h-5 w-5" /> Record Revenue</CardTitle></CardHeader>
       <CardContent className="space-y-3">
-        <Select value={source} onValueChange={(v: 'cash' | 'visa') => setSource(v)}>
+        <Select value={source} onValueChange={setSource}>
           <SelectTrigger><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="cash">Cash</SelectItem>
@@ -34,7 +33,6 @@ const RevenueTab = () => {
           </SelectContent>
         </Select>
         <Input placeholder="Amount" type="number" value={amount} onChange={e => setAmount(e.target.value)} />
-        <Input type="date" value={date} onChange={e => setDate(e.target.value)} />
         <Button onClick={handleCreate} className="w-full">Record</Button>
       </CardContent>
     </Card>

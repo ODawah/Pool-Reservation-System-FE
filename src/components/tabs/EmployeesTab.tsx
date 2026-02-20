@@ -16,7 +16,7 @@ const EmployeesTab = () => {
   const handleCreate = async () => {
     if (!name || !role || !salary) return;
     try {
-      await createEmployee({ name, role, salary: Number(salary) });
+      await createEmployee(name, role, Number(salary));
       toast({ title: 'Employee created' });
       setName(''); setRole(''); setSalary('');
     } catch { toast({ title: 'Failed to create employee', variant: 'destructive' }); }
