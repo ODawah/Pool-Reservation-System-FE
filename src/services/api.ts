@@ -1,6 +1,10 @@
 import type { Employee, RevenueRecord, ShopItem, ReceiptPayload, Receipt, TableInfo, AttendanceRecord, ExpenseRecord } from '@/types/pool-hall';
 
-const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8001').replace(/\/$/, '');
+const RAW_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8001').trim();
+const NORMALIZED_BASE_URL = /^https?:\/\//i.test(RAW_BASE_URL)
+  ? RAW_BASE_URL
+  : `https://${RAW_BASE_URL}`;
+const BASE_URL = NORMALIZED_BASE_URL.replace(/\/$/, '');
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };

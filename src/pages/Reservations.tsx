@@ -76,7 +76,7 @@ const Reservations = () => {
   const [tables, setTables] = useState<TableInfo[]>([]);
   const [loadingTables, setLoadingTables] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [reservations, setReservations] = useState<TableReservation[]>([]);
+  const [reservations, setReservations] = useState<TableReservation[]>(() => loadSavedReservations());
   const [filterTableId, setFilterTableId] = useState('all');
   const [filterFromTime, setFilterFromTime] = useState('');
   const [filterToTime, setFilterToTime] = useState('');
@@ -90,8 +90,8 @@ const Reservations = () => {
   });
 
   useEffect(() => {
-    setReservations(loadSavedReservations());
-  }, []);
+    saveReservations(reservations);
+  }, [reservations]);
 
   useEffect(() => {
     const loadTables = async () => {
@@ -205,11 +205,7 @@ const Reservations = () => {
       createdAt: new Date().toISOString(),
     };
 
-    setReservations((prev) => {
-      const next = [...prev, newReservation];
-      saveReservations(next);
-      return next;
-    });
+    setReservations((prev) => [...prev, newReservation]);
 
     setForm({
       tableId: '',
@@ -225,11 +221,7 @@ const Reservations = () => {
   };
 
   const handleDeleteReservation = (reservationId: string) => {
-    setReservations((prev) => {
-      const next = prev.filter((reservation) => reservation.id !== reservationId);
-      saveReservations(next);
-      return next;
-    });
+    setReservations((prev) => prev.filter((reservation) => reservation.id !== reservationId));
     toast({ title: 'Reservation removed' });
   };
 

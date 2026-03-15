@@ -34,11 +34,57 @@ interface DraftReceipt {
   items: Record<string, number>;
 }
 
+interface SavedTableSession {
+  id: number;
+  isActive: boolean;
+  startTime: number | null;
+  orders: TableSession['orders'];
+}
+
+const TABLE_SESSIONS_STORAGE_KEY = 'table-sessions-v1';
+
 const typeFromName = (name: string): 'pool' | 'carrom' | 'ps' => {
   const lower = name.toLowerCase();
   if (lower.includes('carrom')) return 'carrom';
   if (lower.includes('ps')) return 'ps';
   return 'pool';
+};
+
+const loadSavedTableSessions = (): SavedTableSession[] => {
+  if (typeof window === 'undefined') return [];
+
+  try {
+    const raw = window.localStorage.getItem(TABLE_SESSIONS_STORAGE_KEY);
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+
+    return parsed
+      .filter((item): item is SavedTableSession => (
+        typeof item?.id === 'number'
+      ))
+      .map((item) => ({
+        id: item.id,
+        isActive: Boolean(item.isActive),
+        startTime: typeof item.startTime === 'number' ? item.startTime : null,
+        orders: Array.isArray(item.orders) ? item.orders : [],
+      }));
+  } catch {
+    return [];
+  }
+};
+
+const saveTableSessions = (tables: TableSession[]) => {
+  if (typeof window === 'undefined') return;
+
+  const payload: SavedTableSession[] = tables.map((table) => ({
+    id: table.id,
+    isActive: table.isActive,
+    startTime: table.startTime,
+    orders: table.orders,
+  }));
+
+  window.localStorage.setItem(TABLE_SESSIONS_STORAGE_KEY, JSON.stringify(payload));
 };
 
 const Index = () => {
@@ -53,14 +99,23 @@ const Index = () => {
   const fetchData = useCallback(async () => {
     try {
       const [tableData, items] = await Promise.all([getTables(), getShopItems()]);
+      const savedById = new Map(loadSavedTableSessions().map((session) => [session.id, session]));
       setShopItems(items);
       setTables(prev => {
         // Merge API table info with existing session state
         return tableData.map((t: TableInfo) => {
           const existing = prev.find(p => p.id === t.id);
-          return existing
-            ? { ...existing, label: t.name, pricePerMinute: t.price }
-            : { id: t.id, label: t.name, type: typeFromName(t.name), isActive: false, startTime: null, orders: [], pricePerMinute: t.price };
+          const saved = savedById.get(t.id);
+          const current = existing ?? saved;
+          return {
+            id: t.id,
+            label: t.name,
+            type: typeFromName(t.name),
+            isActive: current?.isActive ?? false,
+            startTime: current?.startTime ?? null,
+            orders: current?.orders ?? [],
+            pricePerMinute: t.price,
+          };
         });
       });
     } catch {
@@ -69,6 +124,11 @@ const Index = () => {
   }, []);
 
   useEffect(() => { fetchData(); }, [fetchData]);
+
+  useEffect(() => {
+    if (tables.length === 0) return;
+    saveTableSessions(tables);
+  }, [tables]);
 
   const handleStart = (id: number) => {
     setTables(prev => prev.map(t => t.id === id ? { ...t, isActive: true, startTime: Date.now() } : t));
