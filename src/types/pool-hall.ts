@@ -47,20 +47,25 @@ export interface RevenueRecord {
 }
 
 export interface ExpenseRecord {
+  id?: number;
   description: string;
   amount: number;
+  date?: string;
 }
 
 export interface ReceiptPayload {
   table_id: number;
-  items: Record<string, number>;
+  items: Record<string, unknown>;
   total_price: number;
+  payment_type: string;
+  timestamp: string;
 }
 
 export interface Receipt {
   id: number;
   table_id: number;
-  items: Record<string, number>;
+  items: Record<string, unknown>;
   total_price: number;
+  payment_type: string;
   timestamp: string;
 }

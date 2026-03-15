@@ -1,13 +1,29 @@
-import type { Employee, RevenueRecord, ShopItem, ReceiptPayload, Receipt, TableInfo, AttendanceRecord } from '@/types/pool-hall';
+import type { Employee, RevenueRecord, ShopItem, ReceiptPayload, Receipt, TableInfo, AttendanceRecord, ExpenseRecord } from '@/types/pool-hall';
 
-const BASE_URL = 'https://db56-102-41-84-41.ngrok-free.app';
+const BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://127.0.0.1:8001').replace(/\/$/, '');
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (BASE_URL.includes('ngrok-free.app')) {
+    headers['ngrok-skip-browser-warning'] = 'true';
+  }
+
   const res = await fetch(`${BASE_URL}${path}`, {
-    headers: { 'Content-Type': 'application/json', 'ngrok-skip-browser-warning': 'true' },
+    headers,
     ...options,
   });
-  if (!res.ok) throw new Error(`API error: ${res.status}`);
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const data = await res.json();
+      detail = data?.detail ? ` - ${String(data.detail)}` : '';
+    } catch {
+      // ignore non-JSON error body
+    }
+    throw new Error(`API error: ${res.status}${detail}`);
+  }
+
+  if (res.status === 204) return undefined as T;
   return res.json();
 }
 
@@ -66,6 +82,16 @@ export const getRevenue = () =>
 
 export const createRevenue = (source: string, amount: number) =>
   request<void>(`/revenue/?source=${encodeURIComponent(source)}&amount=${amount}`, { method: 'POST' });
+
+// Expenses
+export const getExpenses = () =>
+  request<ExpenseRecord[]>('/expenses/');
+
+export const createExpense = (description: string, amount: number) =>
+  request<ExpenseRecord>('/expenses/', {
+    method: 'POST',
+    body: JSON.stringify({ description, amount }),
+  });
 
 // Receipts
 export const getReceipts = () =>
