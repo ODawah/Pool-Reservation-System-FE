@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Play, Square, Plus, Minus, Coffee } from 'lucide-react';
+import { Play, Square, Minus, Coffee, ArrowRightLeft } from 'lucide-react';
 import type { TableSession, ShopItem } from '@/types/pool-hall';
 
 interface Props {
@@ -10,13 +10,14 @@ interface Props {
   shopItems: ShopItem[];
   onStart: (id: number) => void;
   onStop: (id: number) => void;
+  onSwitchTable: (id: number) => void;
   onAddItem: (tableId: number, item: ShopItem) => void;
   onRemoveItem: (tableId: number, itemIndex: number) => void;
 }
 
 const typeIcon: Record<string, string> = { pool: '🎱', carrom: '⚫', ps: '🎮' };
 
-const TableCard = ({ session, shopItems, onStart, onStop, onAddItem, onRemoveItem }: Props) => {
+const TableCard = ({ session, shopItems, onStart, onStop, onSwitchTable, onAddItem, onRemoveItem }: Props) => {
   const [showMenu, setShowMenu] = useState(false);
   const [elapsed, setElapsed] = useState('00:00');
 
@@ -89,6 +90,11 @@ const TableCard = ({ session, shopItems, onStart, onStop, onAddItem, onRemoveIte
           ) : (
             <Button variant="destructive" onClick={() => onStop(session.id)} className="flex-1">
               <Square className="mr-2 h-4 w-4" /> Stop & Bill
+            </Button>
+          )}
+          {session.isActive && (
+            <Button variant="outline" onClick={() => onSwitchTable(session.id)} title="Switch table">
+              <ArrowRightLeft className="h-4 w-4" />
             </Button>
           )}
           <Button variant="outline" onClick={() => setShowMenu(!showMenu)} className={`${showMenu ? 'border-accent text-accent' : ''}`}>

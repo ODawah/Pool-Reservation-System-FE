@@ -95,6 +95,8 @@ const Index = () => {
   const [receiptDraft, setReceiptDraft] = useState<DraftReceipt | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [submittingReceipt, setSubmittingReceipt] = useState(false);
+  const [switchSourceTableId, setSwitchSourceTableId] = useState<number | null>(null);
+  const [switchTargetTableId, setSwitchTargetTableId] = useState('');
 
   const fetchData = useCallback(async () => {
     try {
@@ -223,6 +225,90 @@ const Index = () => {
     }));
   };
 
+  const availableSwitchTargets = tables.filter((table) => (
+    switchSourceTableId !== null && table.id !== switchSourceTableId && !table.isActive
+  ));
+
+  const switchSourceTable = switchSourceTableId === null
+    ? null
+    : tables.find((table) => table.id === switchSourceTableId) ?? null;
+
+  const closeSwitchDialog = () => {
+    setSwitchSourceTableId(null);
+    setSwitchTargetTableId('');
+  };
+
+  const handleOpenSwitch = (sourceTableId: number) => {
+    const sourceTable = tables.find((table) => table.id === sourceTableId);
+    if (!sourceTable?.isActive) {
+      toast({ title: 'Only active tables can be switched', variant: 'destructive' });
+      return;
+    }
+
+    const targets = tables.filter((table) => table.id !== sourceTableId && !table.isActive);
+    if (targets.length === 0) {
+      toast({ title: 'No available tables to switch into', variant: 'destructive' });
+      return;
+    }
+
+    setSwitchSourceTableId(sourceTableId);
+    setSwitchTargetTableId(String(targets[0].id));
+  };
+
+  const handleConfirmSwitch = () => {
+    if (switchSourceTableId === null || !switchTargetTableId) return;
+    const targetTableId = Number(switchTargetTableId);
+
+    if (!targetTableId) {
+      toast({ title: 'Choose a target table', variant: 'destructive' });
+      return;
+    }
+
+    let didSwitch = false;
+    let sourceLabel = '';
+    let targetLabel = '';
+
+    setTables((prev) => {
+      const source = prev.find((table) => table.id === switchSourceTableId);
+      const target = prev.find((table) => table.id === targetTableId);
+
+      if (!source || !target || !source.isActive || target.isActive) {
+        return prev;
+      }
+
+      didSwitch = true;
+      sourceLabel = source.label;
+      targetLabel = target.label;
+      const movedOrders = source.orders.map((order) => ({ ...order }));
+
+      return prev.map((table) => {
+        if (table.id === source.id) {
+          return { ...table, isActive: false, startTime: null, orders: [] };
+        }
+        if (table.id === target.id) {
+          return {
+            ...table,
+            isActive: true,
+            startTime: source.startTime,
+            orders: movedOrders,
+          };
+        }
+        return table;
+      });
+    });
+
+    if (!didSwitch) {
+      toast({ title: 'Unable to switch table', variant: 'destructive' });
+      return;
+    }
+
+    toast({
+      title: 'Table switched',
+      description: `${sourceLabel} moved to ${targetLabel} with elapsed time preserved.`,
+    });
+    closeSwitchDialog();
+  };
+
   const handleLogout = () => {
     logout();
     navigate('/login', { replace: true });
@@ -274,6 +360,7 @@ const Index = () => {
                   shopItems={shopItems}
                   onStart={handleStart}
                   onStop={handleStop}
+                  onSwitchTable={handleOpenSwitch}
                   onAddItem={handleAddItem}
                   onRemoveItem={handleRemoveItem}
                 />
@@ -288,6 +375,44 @@ const Index = () => {
           <TabsContent value="revenue"><RevenueTab /></TabsContent>
           <TabsContent value="expenses"><ExpensesTab /></TabsContent>
         </Tabs>
+
+        <Dialog open={switchSourceTableId !== null} onOpenChange={(open) => { if (!open) closeSwitchDialog(); }}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle>
+                {switchSourceTable ? `Switch ${switchSourceTable.label}` : 'Switch table'}
+              </DialogTitle>
+              <DialogDescription>
+                Move this active session to another idle table while keeping the same start time.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-2">
+              <p className="text-sm font-medium">Target table</p>
+              <Select value={switchTargetTableId} onValueChange={setSwitchTargetTableId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select table" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availableSwitchTargets.map((table) => (
+                    <SelectItem key={`switch-target-${table.id}`} value={String(table.id)}>
+                      {table.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <DialogFooter>
+              <Button variant="outline" onClick={closeSwitchDialog}>
+                Cancel
+              </Button>
+              <Button onClick={handleConfirmSwitch} disabled={!switchTargetTableId}>
+                Switch
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <Dialog open={Boolean(receiptDraft)} onOpenChange={(open) => { if (!open) closeDraft(); }}>
           <DialogContent className="sm:max-w-xl">
