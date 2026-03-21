@@ -19,15 +19,29 @@ const typeIcon: Record<string, string> = { pool: '🎱', carrom: '⚫', ps: '�
 
 const TableCard = ({ session, shopItems, onStart, onStop, onSwitchTable, onAddItem, onRemoveItem }: Props) => {
   const [showMenu, setShowMenu] = useState(false);
-  const [elapsed, setElapsed] = useState('00:00');
+  const [elapsed, setElapsed] = useState('0minutes');
 
   useEffect(() => {
-    if (!session.isActive || !session.startTime) { setElapsed('00:00'); return; }
+    if (!session.isActive || !session.startTime) { setElapsed('0minutes'); return; }
     const tick = () => {
       const diff = Date.now() - session.startTime!;
-      const mins = Math.floor(diff / 60000);
-      const secs = Math.floor((diff % 60000) / 1000);
-      setElapsed(`${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`);
+      const totalMinutes = Math.floor(diff / 60000);
+      const hours = Math.floor(totalMinutes / 60);
+      const minutes = totalMinutes % 60;
+
+      if (hours === 0) {
+        const minuteLabel = minutes === 1 ? 'minute' : 'minutes';
+        setElapsed(`${minutes}${minuteLabel}`);
+        return;
+      }
+
+      if (minutes === 0) {
+        setElapsed(`${hours}h`);
+        return;
+      }
+
+      const minuteLabel = minutes === 1 ? 'minute' : 'minutes';
+      setElapsed(`${hours}h ${minutes}${minuteLabel}`);
     };
     tick();
     const interval = setInterval(tick, 1000);
