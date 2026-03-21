@@ -25,6 +25,11 @@ interface ManualOrder {
   quantity: number;
 }
 
+const toDateOnlyValue = (date: Date) => {
+  const pad = (value: number) => String(value).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+};
+
 const toDateTimeLocalValue = (date: Date) => {
   const pad = (value: number) => String(value).padStart(2, '0');
   const year = date.getFullYear();
@@ -52,6 +57,7 @@ const RevenueTab = () => {
   const [savingManualReceipt, setSavingManualReceipt] = useState(false);
   const [showManualReceiptForm, setShowManualReceiptForm] = useState(false);
   const [showShopItemsMenu, setShowShopItemsMenu] = useState(false);
+  const [receiptFilterDate, setReceiptFilterDate] = useState(() => toDateOnlyValue(new Date()));
   const [manualOrders, setManualOrders] = useState<ManualOrder[]>([]);
   const [manualForm, setManualForm] = useState<ManualReceiptForm>({
     tableId: '',
@@ -110,9 +116,17 @@ const RevenueTab = () => {
     });
   }, [receipts]);
 
+  const filteredReceipts = useMemo(() => {
+    return sortedReceipts.filter((receipt) => {
+      const timestamp = new Date(receipt.timestamp);
+      if (Number.isNaN(timestamp.getTime())) return false;
+      return toDateOnlyValue(timestamp) === receiptFilterDate;
+    });
+  }, [sortedReceipts, receiptFilterDate]);
+
   const totalRevenue = useMemo(() => {
-    return receipts.reduce((sum, receipt) => sum + receipt.total_price, 0);
-  }, [receipts]);
+    return filteredReceipts.reduce((sum, receipt) => sum + receipt.total_price, 0);
+  }, [filteredReceipts]);
 
   const selectedTable = useMemo(() => {
     return tables.find((table) => table.id === Number(manualForm.tableId)) || null;
@@ -262,7 +276,7 @@ const RevenueTab = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
-          <p className="text-sm text-muted-foreground">Total receipts: {receipts.length}</p>
+          <p className="text-sm text-muted-foreground">Total receipts: {filteredReceipts.length}</p>
           <p className="text-xl font-bold">${totalRevenue.toFixed(2)}</p>
         </CardContent>
       </Card>
@@ -469,6 +483,32 @@ const RevenueTab = () => {
         )}
       </Card>
 
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <DollarSign className="h-5 w-5" /> Receipts Filter
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="flex flex-wrap items-end gap-3">
+          <div className="space-y-2">
+            <Label htmlFor="receipts-filter-date">Filter by day</Label>
+            <Input
+              id="receipts-filter-date"
+              type="date"
+              value={receiptFilterDate}
+              onChange={(event) => setReceiptFilterDate(event.target.value)}
+            />
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => setReceiptFilterDate(toDateOnlyValue(new Date()))}
+          >
+            Today
+          </Button>
+        </CardContent>
+      </Card>
+
       {loadingReceipts ? (
         <Card>
           <CardHeader>
@@ -480,14 +520,14 @@ const RevenueTab = () => {
             <p className="text-muted-foreground">Loading receipts...</p>
           </CardContent>
         </Card>
-      ) : sortedReceipts.length === 0 ? (
+      ) : filteredReceipts.length === 0 ? (
         <Card>
           <CardContent className="py-6">
-            <p className="text-muted-foreground">No receipts found.</p>
+            <p className="text-muted-foreground">No receipts found for this day.</p>
           </CardContent>
         </Card>
       ) : (
-        sortedReceipts.map((receipt) => (
+        filteredReceipts.map((receipt) => (
           <Card key={receipt.id}>
             <CardHeader>
               <CardTitle className="text-base">
