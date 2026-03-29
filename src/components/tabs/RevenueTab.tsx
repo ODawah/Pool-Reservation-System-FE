@@ -1,11 +1,14 @@
 import { FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Switch } from '@/components/ui/switch';
 import { createReceipt, getReceipts, getShopItems, getTables } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
+import { buildTimeReceiptItems, calculateTimeCharge, TABLE_TIME_OFFER } from '@/lib/billing';
 import type { Receipt, ReceiptPayload, ShopItem, TableInfo } from '@/types/pool-hall';
 import { Coffee, DollarSign, FileText, Minus, Plus } from 'lucide-react';
 
@@ -15,6 +18,7 @@ interface ManualReceiptForm {
   tableId: string;
   minutes: string;
   extraAmount: string;
+  applyOffer: boolean;
   paymentType: PaymentMethod;
   receiptTime: string;
   notes: string;
@@ -63,6 +67,7 @@ const RevenueTab = () => {
     tableId: '',
     minutes: '60',
     extraAmount: '0',
+    applyOffer: false,
     paymentType: 'Cash',
     receiptTime: toDateTimeLocalValue(new Date()),
     notes: '',
@@ -139,7 +144,10 @@ const RevenueTab = () => {
     return manualOrders.reduce((sum, order) => sum + order.shopItem.price * order.quantity, 0);
   }, [manualOrders]);
 
-  const manualTimeCost = selectedTable ? manualMinutes * selectedTable.price : 0;
+  const manualTimeBreakdown = selectedTable
+    ? calculateTimeCharge(manualMinutes, selectedTable.price, manualForm.applyOffer)
+    : calculateTimeCharge(0, 0);
+  const manualTimeCost = manualTimeBreakdown.timeCost;
   const manualTotal = manualTimeCost + manualShopItemsCost + manualExtraAmount;
 
   const renderItems = (items: Record<string, unknown>) => {
@@ -218,7 +226,11 @@ const RevenueTab = () => {
       return;
     }
 
-    const items: Record<string, unknown> = { Time: minutes, 'Manual receipt': true };
+    const timeBreakdown = calculateTimeCharge(minutes, table.price, manualForm.applyOffer);
+    const items: Record<string, unknown> = {
+      ...buildTimeReceiptItems(timeBreakdown),
+      'Manual receipt': true,
+    };
 
     manualOrders.forEach((order) => {
       items[order.shopItem.name] = order.quantity;
@@ -235,7 +247,7 @@ const RevenueTab = () => {
     const payload: ReceiptPayload = {
       table_id: tableId,
       items,
-      total_price: minutes * table.price + manualShopItemsCost + extraAmount,
+      total_price: timeBreakdown.timeCost + manualShopItemsCost + extraAmount,
       payment_type: manualForm.paymentType,
       timestamp: receiptTime.toISOString(),
     };
@@ -254,6 +266,7 @@ const RevenueTab = () => {
         tableId: '',
         minutes: '60',
         extraAmount: '0',
+        applyOffer: false,
         paymentType: 'Cash',
         receiptTime: toDateTimeLocalValue(new Date()),
         notes: '',
@@ -327,6 +340,24 @@ const RevenueTab = () => {
                   value={manualForm.minutes}
                   onChange={(event) => setManualForm((prev) => ({ ...prev, minutes: event.target.value }))}
                 />
+                <p className="text-xs text-muted-foreground">
+                  Offer rule: every {TABLE_TIME_OFFER.playedMinutes} played minutes are billed as {TABLE_TIME_OFFER.billedMinutes} minutes.
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Apply Offer</Label>
+                <div className="flex items-center justify-between rounded-md border px-3 py-2">
+                  <div>
+                    <p className="text-sm font-medium">2h for 1.5h</p>
+                    <p className="text-xs text-muted-foreground">Turn this on only when you want to apply the offer.</p>
+                  </div>
+                  <Switch
+                    checked={manualForm.applyOffer}
+                    onCheckedChange={(checked) => setManualForm((prev) => ({ ...prev, applyOffer: checked }))}
+                    aria-label="Apply manual offer"
+                  />
+                </div>
               </div>
 
               <div className="space-y-2">
@@ -452,6 +483,27 @@ const RevenueTab = () => {
               )}
 
               <div className="space-y-1 rounded-md border p-3 text-sm md:col-span-2">
+                {manualForm.applyOffer && (
+                  <Badge className="mb-2 bg-primary/15 text-primary hover:bg-primary/15">
+                    {manualTimeBreakdown.offerApplied ? 'Offer applied' : 'Offer selected'}
+                  </Badge>
+                )}
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Played time</span>
+                  <span>{manualTimeBreakdown.playedMinutes} min</span>
+                </div>
+                {manualTimeBreakdown.discountedMinutes > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Billed time after offer</span>
+                    <span>{manualTimeBreakdown.billedMinutes} min</span>
+                  </div>
+                )}
+                {manualTimeBreakdown.discountedMinutes > 0 && (
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Offer discount</span>
+                    <span>-{manualTimeBreakdown.discountedMinutes} min</span>
+                  </div>
+                )}
                 <div className="flex items-center justify-between">
                   <span className="text-muted-foreground">Time cost</span>
                   <span>${manualTimeCost.toFixed(2)}</span>

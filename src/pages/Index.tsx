@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   Dialog,
   DialogContent,
@@ -19,6 +20,7 @@ import ExpensesTab from '@/components/tabs/ExpensesTab';
 import { getShopItems, getTables, createReceipt } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { logout } from '@/lib/auth';
+import { buildTimeReceiptItems, calculateTimeCharge, TABLE_TIME_OFFER } from '@/lib/billing';
 import type { TableSession, ShopItem, ReceiptPayload, TableInfo } from '@/types/pool-hall';
 import { CalendarClock, LogOut } from 'lucide-react';
 
@@ -27,9 +29,13 @@ type PaymentMethod = 'Cash' | 'Visa';
 interface DraftReceipt {
   tableId: number;
   tableLabel: string;
+  offerEnabled: boolean;
   totalMinutes: number;
+  billedMinutes: number;
+  discountedMinutes: number;
   timeCost: number;
   ordersCost: number;
+  carryOverCost: number;
   totalPrice: number;
   items: Record<string, number>;
 }
@@ -37,8 +43,11 @@ interface DraftReceipt {
 interface SavedTableSession {
   id: number;
   isActive: boolean;
+  offerEnabled: boolean;
   startTime: number | null;
   orders: TableSession['orders'];
+  carryOverCost: number;
+  carryOverItems: Record<string, number>;
 }
 
 const TABLE_SESSIONS_STORAGE_KEY = 'table-sessions-v1';
@@ -48,6 +57,19 @@ const typeFromName = (name: string): 'pool' | 'carrom' | 'ps' => {
   if (lower.includes('carrom')) return 'carrom';
   if (lower.includes('ps')) return 'ps';
   return 'pool';
+};
+
+const mergeReceiptItems = (
+  base: Record<string, number>,
+  incoming: Record<string, number>,
+): Record<string, number> => {
+  const merged: Record<string, number> = { ...base };
+  Object.entries(incoming).forEach(([key, value]) => {
+    const numericValue = Number(value);
+    if (!Number.isFinite(numericValue)) return;
+    merged[key] = (merged[key] || 0) + numericValue;
+  });
+  return merged;
 };
 
 const loadSavedTableSessions = (): SavedTableSession[] => {
@@ -64,8 +86,23 @@ const loadSavedTableSessions = (): SavedTableSession[] => {
         typeof item?.id === 'number'
       ))
       .map((item) => ({
+        carryOverItems: Object.entries(
+          typeof item?.carryOverItems === 'object' && item.carryOverItems !== null
+            ? (item.carryOverItems as Record<string, unknown>)
+            : {},
+        ).reduce<Record<string, number>>((acc, [key, value]) => {
+          const numericValue = Number(value);
+          if (Number.isFinite(numericValue)) {
+            acc[key] = numericValue;
+          }
+          return acc;
+        }, {}),
+        carryOverCost: Number.isFinite(Number(item?.carryOverCost))
+          ? Number(item.carryOverCost)
+          : 0,
         id: item.id,
         isActive: Boolean(item.isActive),
+        offerEnabled: Boolean(item?.offerEnabled),
         startTime: typeof item.startTime === 'number' ? item.startTime : null,
         orders: Array.isArray(item.orders) ? item.orders : [],
       }));
@@ -80,8 +117,11 @@ const saveTableSessions = (tables: TableSession[]) => {
   const payload: SavedTableSession[] = tables.map((table) => ({
     id: table.id,
     isActive: table.isActive,
+    offerEnabled: table.offerEnabled,
     startTime: table.startTime,
     orders: table.orders,
+    carryOverCost: table.carryOverCost,
+    carryOverItems: table.carryOverItems,
   }));
 
   window.localStorage.setItem(TABLE_SESSIONS_STORAGE_KEY, JSON.stringify(payload));
@@ -93,6 +133,7 @@ const Index = () => {
   const [tables, setTables] = useState<TableSession[]>([]);
   const [shopItems, setShopItems] = useState<ShopItem[]>([]);
   const [receiptDraft, setReceiptDraft] = useState<DraftReceipt | null>(null);
+  const [receiptTargetTableId, setReceiptTargetTableId] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('Cash');
   const [submittingReceipt, setSubmittingReceipt] = useState(false);
   const [switchSourceTableId, setSwitchSourceTableId] = useState<number | null>(null);
@@ -114,9 +155,12 @@ const Index = () => {
             label: t.name,
             type: typeFromName(t.name),
             isActive: current?.isActive ?? false,
+            offerEnabled: current?.offerEnabled ?? false,
             startTime: current?.startTime ?? null,
             orders: current?.orders ?? [],
             pricePerMinute: t.price,
+            carryOverCost: current?.carryOverCost ?? 0,
+            carryOverItems: current?.carryOverItems ?? {},
           };
         });
       });
@@ -133,7 +177,13 @@ const Index = () => {
   }, [tables]);
 
   const handleStart = (id: number) => {
-    setTables(prev => prev.map(t => t.id === id ? { ...t, isActive: true, startTime: Date.now() } : t));
+    setTables(prev => prev.map(t => t.id === id ? { ...t, isActive: true, offerEnabled: false, startTime: Date.now() } : t));
+  };
+
+  const handleToggleOffer = (id: number, enabled: boolean) => {
+    setTables((prev) => prev.map((table) => (
+      table.id === id ? { ...table, offerEnabled: enabled } : table
+    )));
   };
 
   const handleStop = (id: number) => {
@@ -141,24 +191,32 @@ const Index = () => {
     if (!table || !table.startTime) return;
 
     const totalMinutes = Math.round((Date.now() - table.startTime) / 60000);
-    const timeCost = totalMinutes * table.pricePerMinute;
+    const timeBreakdown = calculateTimeCharge(totalMinutes, table.pricePerMinute, table.offerEnabled);
+    const timeCost = timeBreakdown.timeCost;
     const ordersCost = table.orders.reduce((s, o) => s + o.shopItem.price * o.quantity, 0);
 
-    // Build items as { name: qty } dict
-    const items: Record<string, number> = {};
+    // Build current segment items as { name: qty } dict.
+    const currentItems: Record<string, number> = {};
     table.orders.forEach(o => {
-      items[o.shopItem.name] = (items[o.shopItem.name] || 0) + o.quantity;
+      currentItems[o.shopItem.name] = (currentItems[o.shopItem.name] || 0) + o.quantity;
     });
-    items.Time = totalMinutes;
+    Object.assign(currentItems, buildTimeReceiptItems(timeBreakdown));
+    const carryOverCost = table.carryOverCost || 0;
+    const items = mergeReceiptItems(table.carryOverItems || {}, currentItems);
 
     setPaymentMethod('Cash');
+    setReceiptTargetTableId(String(table.id));
     setReceiptDraft({
       tableId: table.id,
       tableLabel: table.label,
+      offerEnabled: table.offerEnabled,
       totalMinutes,
+      billedMinutes: timeBreakdown.billedMinutes,
+      discountedMinutes: timeBreakdown.discountedMinutes,
       timeCost,
       ordersCost,
-      totalPrice: timeCost + ordersCost,
+      carryOverCost,
+      totalPrice: carryOverCost + timeCost + ordersCost,
       items,
     });
   };
@@ -166,13 +224,68 @@ const Index = () => {
   const closeDraft = () => {
     if (submittingReceipt) return;
     setReceiptDraft(null);
+    setReceiptTargetTableId('');
   };
 
   const handleDone = async () => {
     if (!receiptDraft) return;
+    const targetTableId = Number(receiptTargetTableId || receiptDraft.tableId);
+    const targetTable = tables.find((table) => table.id === targetTableId);
+    const sourceTable = tables.find((table) => table.id === receiptDraft.tableId);
+
+    if (!targetTable) {
+      toast({ title: 'Choose a valid table for this receipt', variant: 'destructive' });
+      return;
+    }
+    if (!sourceTable) {
+      toast({ title: 'Source table is not available', variant: 'destructive' });
+      return;
+    }
+    if (targetTableId !== receiptDraft.tableId && targetTable.isActive) {
+      toast({ title: 'Target table must be idle', variant: 'destructive' });
+      return;
+    }
+
+    if (targetTableId !== receiptDraft.tableId) {
+      setTables((prev) =>
+        prev.map((table) => {
+          if (table.id === receiptDraft.tableId) {
+            return {
+              ...table,
+              isActive: false,
+              offerEnabled: false,
+              startTime: null,
+              orders: [],
+              carryOverCost: 0,
+              carryOverItems: {},
+            };
+          }
+
+          if (table.id === targetTableId) {
+            return {
+              ...table,
+              isActive: true,
+              offerEnabled: receiptDraft.offerEnabled,
+              startTime: table.startTime ?? Date.now(),
+              carryOverCost: (table.carryOverCost || 0) + receiptDraft.totalPrice,
+              carryOverItems: mergeReceiptItems(table.carryOverItems || {}, receiptDraft.items),
+            };
+          }
+
+          return table;
+        }),
+      );
+      toast({
+        title: 'Charges moved to another table',
+        description: `${sourceTable.label} charges added to ${targetTable.label}. Finish and bill from ${targetTable.label}.`,
+      });
+      setReceiptDraft(null);
+      setReceiptTargetTableId('');
+      return;
+    }
 
     const receipt: ReceiptPayload = {
-      table_id: receiptDraft.tableId,
+      table_id: targetTableId,
       items: receiptDraft.items,
       total_price: receiptDraft.totalPrice,
       payment_type: paymentMethod,
@@ -184,12 +297,15 @@ const Index = () => {
       await createReceipt(receipt);
       toast({
         title: 'Receipt created',
-        description: `${receiptDraft.tableLabel} — ${paymentMethod} — $${receipt.total_price.toFixed(2)}`,
+        description: `${receiptDraft.tableLabel} -> ${targetTable.label} — ${paymentMethod} — $${receipt.total_price.toFixed(2)}`,
       });
       setTables(prev => prev.map(t => (
-        t.id === receiptDraft.tableId ? { ...t, isActive: false, startTime: null, orders: [] } : t
+        t.id === receiptDraft.tableId
+          ? { ...t, isActive: false, offerEnabled: false, startTime: null, orders: [], carryOverCost: 0, carryOverItems: {} }
+          : t
       )));
       setReceiptDraft(null);
+      setReceiptTargetTableId('');
       fetchData();
     } catch {
       toast({ title: 'Failed to create receipt', variant: 'destructive' });
@@ -283,14 +399,17 @@ const Index = () => {
 
       return prev.map((table) => {
         if (table.id === source.id) {
-          return { ...table, isActive: false, startTime: null, orders: [] };
+          return { ...table, isActive: false, offerEnabled: false, startTime: null, orders: [], carryOverCost: 0, carryOverItems: {} };
         }
         if (table.id === target.id) {
           return {
             ...table,
             isActive: true,
+            offerEnabled: source.offerEnabled,
             startTime: source.startTime,
             orders: movedOrders,
+            carryOverCost: (target.carryOverCost || 0) + (source.carryOverCost || 0),
+            carryOverItems: mergeReceiptItems(target.carryOverItems || {}, source.carryOverItems || {}),
           };
         }
         return table;
@@ -360,6 +479,7 @@ const Index = () => {
                   shopItems={shopItems}
                   onStart={handleStart}
                   onStop={handleStop}
+                  onToggleOffer={handleToggleOffer}
                   onSwitchTable={handleOpenSwitch}
                   onAddItem={handleAddItem}
                   onRemoveItem={handleRemoveItem}
@@ -425,6 +545,12 @@ const Index = () => {
 
             {receiptDraft && (
               <div className="space-y-4">
+                {receiptDraft.offerEnabled && (
+                  <Badge className="bg-primary/15 text-primary hover:bg-primary/15">
+                    {receiptDraft.discountedMinutes > 0 ? 'Offer applied' : 'Offer selected'}
+                  </Badge>
+                )}
+
                 <div className="space-y-1">
                   {Object.entries(receiptDraft.items).map(([name, quantity]) => (
                     <div key={name} className="flex items-center justify-between text-sm">
@@ -435,6 +561,28 @@ const Index = () => {
                 </div>
 
                 <div className="space-y-1 rounded-md border p-3 text-sm">
+                  {receiptDraft.carryOverCost > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Carried from previous table</span>
+                      <span>${receiptDraft.carryOverCost.toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center justify-between">
+                    <span className="text-muted-foreground">Played time</span>
+                    <span>{receiptDraft.totalMinutes} min</span>
+                  </div>
+                  {receiptDraft.discountedMinutes > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Billed time after offer</span>
+                      <span>{receiptDraft.billedMinutes} min</span>
+                    </div>
+                  )}
+                  {receiptDraft.discountedMinutes > 0 && (
+                    <div className="flex items-center justify-between">
+                      <span className="text-muted-foreground">Offer discount</span>
+                      <span>-{receiptDraft.discountedMinutes} min</span>
+                    </div>
+                  )}
                   <div className="flex items-center justify-between">
                     <span className="text-muted-foreground">Table time cost</span>
                     <span>${receiptDraft.timeCost.toFixed(2)}</span>
@@ -460,6 +608,32 @@ const Index = () => {
                       <SelectItem value="Visa">Visa</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground">
+                    If selected, every {TABLE_TIME_OFFER.playedMinutes} played minutes are billed as {TABLE_TIME_OFFER.billedMinutes} minutes.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <p className="text-sm font-medium">Add Receipt To Table</p>
+                  <Select value={receiptTargetTableId} onValueChange={setReceiptTargetTableId}>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select table" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tables.map((table) => (
+                        <SelectItem
+                          key={`receipt-target-${table.id}`}
+                          value={String(table.id)}
+                          disabled={Boolean(receiptDraft && table.id !== receiptDraft.tableId && table.isActive)}
+                        >
+                          {table.label}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Choosing another idle table will continue this bill there, then you can close one final receipt later.
+                  </p>
                 </div>
               </div>
             )}

@@ -2,6 +2,8 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
+import { calculateTimeCharge } from '@/lib/billing';
 import { Play, Square, Minus, Coffee, ArrowRightLeft } from 'lucide-react';
 import type { TableSession, ShopItem } from '@/types/pool-hall';
 
@@ -10,6 +12,7 @@ interface Props {
   shopItems: ShopItem[];
   onStart: (id: number) => void;
   onStop: (id: number) => void;
+  onToggleOffer: (id: number, enabled: boolean) => void;
   onSwitchTable: (id: number) => void;
   onAddItem: (tableId: number, item: ShopItem) => void;
   onRemoveItem: (tableId: number, itemIndex: number) => void;
@@ -17,15 +20,22 @@ interface Props {
 
 const typeIcon: Record<string, string> = { pool: '🎱', carrom: '⚫', ps: '🎮' };
 
-const TableCard = ({ session, shopItems, onStart, onStop, onSwitchTable, onAddItem, onRemoveItem }: Props) => {
+const TableCard = ({ session, shopItems, onStart, onStop, onToggleOffer, onSwitchTable, onAddItem, onRemoveItem }: Props) => {
   const [showMenu, setShowMenu] = useState(false);
   const [elapsed, setElapsed] = useState('0minutes');
+  const [elapsedMinutes, setElapsedMinutes] = useState(0);
 
   useEffect(() => {
-    if (!session.isActive || !session.startTime) { setElapsed('0minutes'); return; }
+    if (!session.isActive || !session.startTime) {
+      setElapsed('0minutes');
+      setElapsedMinutes(0);
+      return;
+    }
+
     const tick = () => {
       const diff = Date.now() - session.startTime!;
       const totalMinutes = Math.floor(diff / 60000);
+      setElapsedMinutes(totalMinutes);
       const hours = Math.floor(totalMinutes / 60);
       const minutes = totalMinutes % 60;
 
@@ -49,6 +59,7 @@ const TableCard = ({ session, shopItems, onStart, onStop, onSwitchTable, onAddIt
   }, [session.isActive, session.startTime]);
 
   const orderTotal = session.orders.reduce((sum, o) => sum + o.shopItem.price * o.quantity, 0);
+  const timeBreakdown = calculateTimeCharge(elapsedMinutes, session.pricePerMinute, session.offerEnabled);
 
   return (
     <Card className={`relative overflow-hidden transition-all duration-300 ${
@@ -73,6 +84,26 @@ const TableCard = ({ session, shopItems, onStart, onStop, onSwitchTable, onAddIt
             {session.isActive ? elapsed : 'Idle'}
           </Badge>
         </div>
+
+        {session.isActive && session.offerEnabled && (
+          <div className="rounded-md border border-primary/40 bg-primary/10 px-3 py-2 text-sm font-medium text-primary">
+            {timeBreakdown.offerApplied ? 'Offer applied' : 'Offer selected'}: 2h is billed as 1.5h
+          </div>
+        )}
+
+        {session.isActive && (
+          <div className="flex items-center justify-between rounded-md border border-border/60 px-3 py-2">
+            <div>
+              <p className="text-sm font-medium">Apply offer</p>
+              <p className="text-xs text-muted-foreground">Enable the 2h for 1.5h discount for this session.</p>
+            </div>
+            <Switch
+              checked={session.offerEnabled}
+              onCheckedChange={(checked) => onToggleOffer(session.id, checked)}
+              aria-label={`Apply offer for ${session.label}`}
+            />
+          </div>
+        )}
 
         {/* Orders list */}
         {session.orders.length > 0 && (

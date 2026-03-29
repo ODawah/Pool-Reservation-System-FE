@@ -21,9 +21,12 @@ export interface TableSession {
   label: string;
   type: 'pool' | 'carrom' | 'ps';
   isActive: boolean;
+  offerEnabled: boolean;
   startTime: number | null;
   orders: OrderItem[];
   pricePerMinute: number;
+  carryOverCost: number;
+  carryOverItems: Record<string, number>;
 }
 
 export interface Employee {

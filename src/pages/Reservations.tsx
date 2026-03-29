@@ -10,22 +10,12 @@ import { Badge } from '@/components/ui/badge';
 import { Calendar } from '@/components/ui/calendar';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { useToast } from '@/hooks/use-toast';
+import { loadSavedReservations, saveReservations } from '@/lib/reservations';
 import { getTables } from '@/services/api';
 import { logout } from '@/lib/auth';
+import type { TableReservation } from '@/lib/reservations';
 import type { TableInfo } from '@/types/pool-hall';
 import { CalendarClock, CalendarDays, LayoutDashboard, LogOut, Trash2 } from 'lucide-react';
-
-interface TableReservation {
-  id: string;
-  tableId: number;
-  tableName: string;
-  customerName: string;
-  phone: string;
-  startsAt: string;
-  durationMinutes: number;
-  notes: string;
-  createdAt: string;
-}
 
 interface ReservationForm {
   tableId: string;
@@ -36,7 +26,6 @@ interface ReservationForm {
   notes: string;
 }
 
-const STORAGE_KEY = 'table-reservations-v1';
 const MINUTES_PER_DAY = 24 * 60;
 const PIXELS_PER_MINUTE = 1.5;
 const TIMELINE_WIDTH = MINUTES_PER_DAY * PIXELS_PER_MINUTE;
@@ -136,24 +125,6 @@ const getTimelineSegment = (reservation: TableReservation) => {
     left: visibleStart * PIXELS_PER_MINUTE,
     width: Math.max(visibleDuration * PIXELS_PER_MINUTE, 12),
   };
-};
-
-const loadSavedReservations = (): TableReservation[] => {
-  if (typeof window === 'undefined') return [];
-
-  try {
-    const raw = window.localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as TableReservation[]) : [];
-  } catch {
-    return [];
-  }
-};
-
-const saveReservations = (reservations: TableReservation[]) => {
-  if (typeof window === 'undefined') return;
-  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(reservations));
 };
 
 const Reservations = () => {

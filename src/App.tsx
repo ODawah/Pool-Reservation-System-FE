@@ -7,6 +7,7 @@ import Index from "./pages/Index";
 import NotFound from "./pages/NotFound";
 import Login from "./pages/Login";
 import Reservations from "./pages/Reservations";
+import ReservationAlertWatcher from "./components/ReservationAlertWatcher";
 import { isAuthenticated } from "./lib/auth";
 
 const queryClient = new QueryClient();
@@ -18,7 +19,12 @@ const ProtectedRoutes = () => {
     return <Navigate to="/login" replace state={{ from: location }} />;
   }
 
-  return <Outlet />;
+  return (
+    <>
+      <Outlet />
+      <ReservationAlertWatcher />
+    </>
+  );
 };
 
 const App = () => (
