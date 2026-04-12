@@ -98,8 +98,8 @@ export const createExpense = (description: string, amount: number) =>
   });
 
 // Receipts
-export const getReceipts = () =>
-  request<Receipt[]>('/reciept/');
+export const getReceiptsByDate = (date: string) =>
+  request<Receipt[]>(`/reciept/by-date?date=${encodeURIComponent(date)}`);
 
 export const createReceipt = (data: ReceiptPayload) =>
   request<Receipt>('/reciept/', { method: 'POST', body: JSON.stringify(data) });

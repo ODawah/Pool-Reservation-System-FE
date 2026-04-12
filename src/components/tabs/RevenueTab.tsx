@@ -6,7 +6,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Switch } from '@/components/ui/switch';
-import { createReceipt, getReceipts, getShopItems, getTables } from '@/services/api';
+import { createReceipt, getReceiptsByDate, getShopItems, getTables } from '@/services/api';
 import { useToast } from '@/hooks/use-toast';
 import { buildTimeReceiptItems, calculateTimeCharge, TABLE_TIME_OFFER } from '@/lib/billing';
 import type { Receipt, ReceiptPayload, ShopItem, TableInfo } from '@/types/pool-hall';
@@ -74,15 +74,16 @@ const RevenueTab = () => {
   });
 
   const loadReceipts = useCallback(async () => {
+    setLoadingReceipts(true);
     try {
-      const data = await getReceipts();
+      const data = await getReceiptsByDate(receiptFilterDate);
       setReceipts(data);
     } catch {
       toast({ title: 'Failed to load receipts', variant: 'destructive' });
     } finally {
       setLoadingReceipts(false);
     }
-  }, [toast]);
+  }, [receiptFilterDate, toast]);
 
   const loadTables = useCallback(async () => {
     try {
@@ -115,19 +116,13 @@ const RevenueTab = () => {
     loadShopItems();
   }, [loadTables, loadShopItems]);
 
-  const sortedReceipts = useMemo(() => {
-    return [...receipts].sort((a, b) => {
-      return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
-    });
-  }, [receipts]);
-
   const filteredReceipts = useMemo(() => {
-    return sortedReceipts.filter((receipt) => {
+    return receipts.filter((receipt) => {
       const timestamp = new Date(receipt.timestamp);
       if (Number.isNaN(timestamp.getTime())) return false;
       return toDateOnlyValue(timestamp) === receiptFilterDate;
     });
-  }, [sortedReceipts, receiptFilterDate]);
+  }, [receipts, receiptFilterDate]);
 
   const totalRevenue = useMemo(() => {
     return filteredReceipts.reduce((sum, receipt) => sum + receipt.total_price, 0);
